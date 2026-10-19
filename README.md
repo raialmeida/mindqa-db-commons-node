@@ -87,26 +87,20 @@ Em CommonJS, troque somente a importação:
 const { DatabaseService } = require('@mindqa/db-commons');
 ```
 
-No TypeScript, você pode descrever as linhas retornadas:
+No TypeScript, o uso é o mesmo:
 
 ```typescript
 import { DatabaseService } from '@mindqa/db-commons';
 
-interface Cliente {
-  nome: string;
-  email: string;
-}
-
-async function buscarClientes(id: string): Promise<Cliente[]> {
-  return DatabaseService.select<Cliente>(
-    'SELECT nome, email FROM clientes WHERE id = ?',
-    id,
-  );
-}
+const clientes = await DatabaseService.select(
+  'SELECT nome, email FROM clientes WHERE id = ?',
+  'cliente-1',
+);
 ```
 
-O tipo genérico auxilia o compilador e o editor; não valida os dados do banco
-em tempo de execução.
+Sem informar um tipo, o resultado é `DatabaseRow[]`. Opcionalmente, você pode
+usar `select<T>()` para obter autocomplete e verificação do compilador. O tipo
+genérico não valida os dados do banco em tempo de execução.
 
 ## Métodos da biblioteca
 
