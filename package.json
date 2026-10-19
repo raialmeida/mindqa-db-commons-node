@@ -18,6 +18,16 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./cypress": {
+      "import": {
+        "types": "./dist/cypress.d.ts",
+        "default": "./dist/cypress.js"
+      },
+      "require": {
+        "types": "./dist/cypress.d.cts",
+        "default": "./dist/cypress.cjs"
+      }
     }
   },
   "files": [
