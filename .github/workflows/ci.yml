@@ -1,0 +1,49 @@
+name: Node CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [postgresql, mysql, sqlserver, oracle]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start database
+        run: |
+          docker compose -f compose.integration.yml up -d --wait ${{ matrix.database }}
+          if [ "${{ matrix.database }}" = "sqlserver" ]; then
+            docker compose -f compose.integration.yml run --rm sqlserver-init
+          fi
+      - run: npm run test:integration
+        env:
+          DB_CONFIG: .env.integration.example
+          IT_DATABASE: ${{ matrix.database }}
+      - name: Database diagnostics
+        if: failure()
+        run: docker compose -f compose.integration.yml logs --tail=100
+      - name: Cleanup
+        if: always()
+        run: docker compose -f compose.integration.yml down --volumes
