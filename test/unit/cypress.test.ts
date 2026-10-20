@@ -102,4 +102,59 @@ describe('Cypress database tasks', () => {
     await expect(tasks['db:closePools']()).resolves.toBeNull();
     expect(mocks.closePools).toHaveBeenCalledOnce();
   });
+
+  it('serializes the original cause with the selected connection context', async () => {
+    const driverError = Object.assign(new Error('connect ECONNREFUSED'), {
+      code: 'ECONNREFUSED',
+    });
+    const databaseError = new Error('Falha na operação de banco de dados.', {
+      cause: driverError,
+    });
+    databaseError.name = 'DatabaseError';
+    mocks.select.mockRejectedValue(databaseError);
+
+    const promise = createDatabaseTasks()['db:select']({
+      sql: 'SELECT 1',
+      connection: 'financeiro',
+      database: 'qa',
+    });
+
+    await expect(promise).rejects.toMatchObject({
+      name: 'Error',
+      cause: databaseError,
+      message:
+        'Falha na tarefa db:select (conexão: financeiro, base: qa): Error [ECONNREFUSED]: connect ECONNREFUSED',
+    });
+  });
+
+  it('uses serializable defaults and protects against circular causes', async () => {
+    const circular = new Error('pool indisponível');
+    Object.defineProperty(circular, 'cause', { value: circular });
+    mocks.execute.mockRejectedValue(circular);
+
+    await expect(
+      createDatabaseTasks()['db:execute']({ sql: 'DELETE FROM clientes' }),
+    ).rejects.toMatchObject({
+      name: 'Error',
+      message:
+        'Falha na tarefa db:execute (conexão: padrão, base: configurada): Error: pool indisponível <- [causa circular]',
+    });
+  });
+
+  it('includes every AggregateError item when closing pools fails', async () => {
+    const aggregate = new AggregateError(
+      [new Error('falha PostgreSQL'), new Error('falha Oracle')],
+      'Falha ao fechar pools.',
+    );
+    mocks.closePools.mockRejectedValue(aggregate);
+
+    await expect(
+      createDatabaseTasks()['db:closePools'](),
+    ).rejects.toMatchObject({
+      name: 'Error',
+      cause: aggregate,
+      message:
+        'Falha na tarefa db:closePools: AggregateError: Falha ao fechar pools. <- [Error: falha PostgreSQL; Error: falha Oracle]',
+    });
+  });
 });

@@ -62,11 +62,10 @@ export type CypressDatabaseTasks = {
    * @returns Promise com as linhas encontradas; retorna uma lista vazia quando
    * nenhum registro for encontrado. Os valores retornados atravessam a
    * serialização do Cypress antes de chegar ao teste.
-   * @throws {TypeError} A Promise rejeita quando os argumentos forem inválidos.
-   * @throws {DatabaseConfigurationError} A Promise rejeita quando a configuração
-   * selecionada estiver ausente ou for inválida.
-   * @throws {DatabaseError} A Promise rejeita quando o driver falhar; o Cypress
-   * apresenta a falha da tarefa ao teste.
+   * @throws {TypeError} A Promise rejeita quando o objeto da tarefa ou `params`
+   * forem inválidos.
+   * @throws {Error} A Promise rejeita com uma mensagem serializável que identifica
+   * a tarefa, a conexão, a base e a cadeia de causas do erro original.
    */
   'db:select': (input: CypressDatabaseTaskInput) => Promise<DatabaseRow[]>;
   /**
@@ -74,11 +73,10 @@ export type CypressDatabaseTasks = {
    *
    * @param input SQL, parâmetros e seleção opcional de conexão e base.
    * @returns Promise com a quantidade de linhas afetadas, não o ID gerado.
-   * @throws {TypeError} A Promise rejeita quando os argumentos forem inválidos.
-   * @throws {DatabaseConfigurationError} A Promise rejeita quando a configuração
-   * selecionada estiver ausente ou for inválida.
-   * @throws {DatabaseError} A Promise rejeita quando o driver falhar; o Cypress
-   * apresenta a falha da tarefa ao teste.
+   * @throws {TypeError} A Promise rejeita quando o objeto da tarefa ou `params`
+   * forem inválidos.
+   * @throws {Error} A Promise rejeita com uma mensagem serializável que identifica
+   * a tarefa, a conexão, a base e a cadeia de causas do erro original.
    */
   'db:execute': (input: CypressDatabaseTaskInput) => Promise<number>;
   /**
@@ -86,8 +84,9 @@ export type CypressDatabaseTasks = {
    *
    * @returns Promise com `null`, pois uma tarefa Cypress não pode retornar
    * `undefined`. Uma operação posterior pode criar novos pools.
-   * @throws {DatabaseError} A Promise rejeita quando um ou mais pools não podem
-   * ser fechados; todas as tentativas de fechamento são realizadas.
+   * @throws {Error} A Promise rejeita com a cadeia de causas em uma mensagem
+   * serializável quando um ou mais pools não podem ser fechados. Todas as
+   * tentativas de fechamento são realizadas.
    */
   'db:closePools': () => Promise<null>;
 };
@@ -99,9 +98,9 @@ function normalizeInput(input: CypressDatabaseTaskInput): {
   database: string | null | undefined;
 } {
   if (!input || typeof input !== 'object' || Array.isArray(input))
-    throw new TypeError('Informe os argumentos da tarefa de banco.');
+    throw new TypeError('Informe um objeto com o campo sql para executar a tarefa de banco.');
   if (input.params !== undefined && !Array.isArray(input.params))
-    throw new TypeError('params deve ser uma lista de parâmetros SQL.');
+    throw new TypeError('O campo params deve ser uma lista de parâmetros SQL.');
   for (const value of input.params ?? []) {
     const valid =
       value === null ||
@@ -112,7 +111,7 @@ function normalizeInput(input: CypressDatabaseTaskInput): {
         (!Number.isInteger(value) || Number.isSafeInteger(value)));
     if (!valid)
       throw new TypeError(
-        'Parâmetro Cypress inválido. Use string, número finito seguro, boolean ou null; envie datas, binários e inteiros grandes como string.',
+        'Parâmetro Cypress inválido. Use string, número finito, boolean ou null. Inteiros devem estar no intervalo seguro do JavaScript. Converta datas e bigint para string; dados binários devem usar uma representação textual compatível com o SQL.',
       );
   }
   return {
@@ -133,6 +132,76 @@ function clientFor(
       : DatabaseService.database(database);
   const client = DatabaseService.connection(connection);
   return database === undefined ? client : client.database(database);
+}
+
+const MAX_SERIALIZED_ERRORS = 10;
+
+function errorDescription(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const code =
+    'code' in error &&
+    (typeof error.code === 'string' || typeof error.code === 'number')
+      ? ` [${String(error.code)}]`
+      : '';
+  return `${error.name}${code}: ${error.message}`;
+}
+
+function errorChain(error: unknown): string {
+  let count = 0;
+  const visited = new Set<unknown>();
+
+  const serialize = (current: unknown): string => {
+    if (count >= MAX_SERIALIZED_ERRORS) return '[erros adicionais truncados]';
+    if (visited.has(current)) return '[causa circular]';
+    visited.add(current);
+    count++;
+
+    if (
+      current instanceof Error &&
+      current.name === 'DatabaseError' &&
+      current.cause !== undefined
+    )
+      return serialize(current.cause);
+
+    const description = errorDescription(current);
+    const aggregate =
+      current instanceof AggregateError
+        ? current.errors.map(serialize).join('; ')
+        : '';
+    const cause = current instanceof Error ? current.cause : undefined;
+    return [
+      description,
+      aggregate ? `[${aggregate}]` : '',
+      cause === undefined ? '' : serialize(cause),
+    ]
+      .filter(Boolean)
+      .join(' <- ');
+  };
+
+  return serialize(error);
+}
+
+function taskError(
+  task: keyof CypressDatabaseTasks,
+  error: unknown,
+  connection?: string,
+  database?: string | null,
+): Error {
+  const selectedConnection =
+    typeof connection === 'string' && connection.trim()
+      ? connection.trim()
+      : 'padrão';
+  const selectedDatabase =
+    typeof database === 'string' && database.trim()
+      ? database.trim()
+      : 'configurada';
+  const target =
+    task === 'db:closePools'
+      ? ''
+      : ` (conexão: ${selectedConnection}, base: ${selectedDatabase})`;
+  return new Error(`Falha na tarefa ${task}${target}: ${errorChain(error)}`, {
+    cause: error,
+  });
 }
 
 /**
@@ -161,15 +230,27 @@ export function createDatabaseTasks(): CypressDatabaseTasks {
   return {
     'db:select': async (input) => {
       const { sql, params, connection, database } = normalizeInput(input);
-      return clientFor(connection, database).select(sql, ...params);
+      try {
+        return await clientFor(connection, database).select(sql, ...params);
+      } catch (error) {
+        throw taskError('db:select', error, connection, database);
+      }
     },
     'db:execute': async (input) => {
       const { sql, params, connection, database } = normalizeInput(input);
-      return clientFor(connection, database).execute(sql, ...params);
+      try {
+        return await clientFor(connection, database).execute(sql, ...params);
+      } catch (error) {
+        throw taskError('db:execute', error, connection, database);
+      }
     },
     'db:closePools': async () => {
-      await DatabaseService.closePools();
-      return null;
+      try {
+        await DatabaseService.closePools();
+        return null;
+      } catch (error) {
+        throw taskError('db:closePools', error);
+      }
     },
   };
 }

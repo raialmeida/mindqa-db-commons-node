@@ -23,9 +23,6 @@ export class DatabaseError extends Error {
    * @param cause Erro original da operação ou da infraestrutura do driver.
    */
   constructor(cause: unknown) {
-    super(
-      'Falha na operação de banco de dados. Consulte cause para o erro original do driver.',
-      { cause },
-    );
+    super('Falha na operação de banco de dados.', { cause });
   }
 }
