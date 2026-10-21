@@ -62,8 +62,8 @@ export type CypressDatabaseTasks = {
    * @returns Promise com as linhas encontradas; retorna uma lista vazia quando
    * nenhum registro for encontrado. Os valores retornados atravessam a
    * serialização do Cypress antes de chegar ao teste.
-   * @throws {TypeError} A Promise rejeita quando o objeto da tarefa ou `params`
-   * forem inválidos.
+   * @throws {TypeError} A Promise rejeita quando o objeto da tarefa, `sql` ou
+   * `params` forem inválidos.
    * @throws {Error} A Promise rejeita com uma mensagem serializável que identifica
    * a tarefa, a conexão, a base e a cadeia de causas do erro original.
    */
@@ -73,8 +73,8 @@ export type CypressDatabaseTasks = {
    *
    * @param input SQL, parâmetros e seleção opcional de conexão e base.
    * @returns Promise com a quantidade de linhas afetadas, não o ID gerado.
-   * @throws {TypeError} A Promise rejeita quando o objeto da tarefa ou `params`
-   * forem inválidos.
+   * @throws {TypeError} A Promise rejeita quando o objeto da tarefa, `sql` ou
+   * `params` forem inválidos.
    * @throws {Error} A Promise rejeita com uma mensagem serializável que identifica
    * a tarefa, a conexão, a base e a cadeia de causas do erro original.
    */
@@ -98,7 +98,11 @@ function normalizeInput(input: CypressDatabaseTaskInput): {
   database: string | null | undefined;
 } {
   if (!input || typeof input !== 'object' || Array.isArray(input))
-    throw new TypeError('Informe um objeto com o campo sql para executar a tarefa de banco.');
+    throw new TypeError(
+      'Os argumentos da tarefa de banco devem ser informados em um objeto.',
+    );
+  if (typeof input.sql !== 'string' || !input.sql.trim())
+    throw new TypeError('O campo sql deve conter um comando SQL.');
   if (input.params !== undefined && !Array.isArray(input.params))
     throw new TypeError('O campo params deve ser uma lista de parâmetros SQL.');
   for (const value of input.params ?? []) {

@@ -12,20 +12,34 @@ DatabaseService → DatabaseClient
                     ├── loadConfiguration → Configuration → ConnectionSettings
                     ├── bindPlaceholders
                     └── withDriver → DatabaseDriver → driver Node.js
+
+createDatabaseTasks → valida entrada do cy.task()
+                    └── DatabaseService ou DatabaseClient
 ```
 
 - `configuration`: seleciona `.env`, captura o ambiente sem modificá-lo, resolve
   namespaces e valida campos. Um destino nunca herda credenciais de outro.
 - `sql`: valida valores e converte placeholders por um scanner sensível ao dialeto.
-  Nenhum valor é interpolado no SQL. Escapes e modos suportados constam no README.
+  Nenhum valor é interpolado no SQL. O scanner preserva literais, identificadores
+  e comentários conforme as regras implementadas para cada dialeto.
 - `drivers`: adaptadores com `select`, `execute` e `close`; contêm diferenças de
   parâmetros, retorno, timeout e gerenciamento de recursos dos quatro drivers.
 - `internal`: ciclo de vida de recursos, registro limitado de pools e fingerprints
   HMAC para evitar credenciais legíveis nas chaves internas.
 - `errors`: configuração e falhas de driver têm classes públicas próprias.
+- `cypress`: valida dados recebidos por `cy.task()`, seleciona conexão e base e
+  converte a cadeia de erros em uma mensagem serializável pelo Cypress.
 
-Somente a fachada, o cliente, erros e tipos de consumo são exportados pelo pacote.
-Tipos internos de configuração e driver não fazem parte da API pública.
+O ponto de entrada `@mindqa/db-commons` exporta a fachada, o cliente, erros e
+tipos de consumo. `@mindqa/db-commons/cypress` exporta `createDatabaseTasks` e
+os tipos do adaptador. Tipos internos de configuração e driver não fazem parte
+da API pública.
+
+No adaptador Cypress, SQL e parâmetros atravessam o `cy.task()`, enquanto as
+credenciais permanecem no processo Node. Os parâmetros são limitados a valores
+serializáveis. Falhas preservam o erro original em `cause` e também expõem sua
+descrição na mensagem apresentada pelo Cypress, sem acrescentar SQL, parâmetros
+ou credenciais.
 
 ## Configuração e concorrência
 
@@ -72,8 +86,10 @@ padrão de criptografia da referência Java 4.0.1.
 ## Validação
 
 Testes unitários cobrem precedência, perfis, isolamento, validação de tipos,
-scanner SQL, falhas e concorrência de inicialização dos pools. Testes de integração
-usam a distribuição compilada, drivers reais e bancos em Docker, com pool habilitado/desabilitado,
-CRUD, valores especiais, concorrência, seleção de base e recuperação de erros.
-O consumidor continua responsável pelo dialeto SQL e por representações de tipos
+scanner SQL, falhas, concorrência de inicialização dos pools e tarefas Cypress.
+Os testes do adaptador verificam entrada, seleção de conexão e base, causas
+circulares e erros agregados. Testes de integração usam a distribuição compilada,
+drivers reais e bancos em Docker, com pool habilitado ou desabilitado, CRUD,
+valores especiais, concorrência, seleção de base e recuperação de erros. O
+consumidor continua responsável pelo dialeto SQL e por representações de tipos
 que variam entre bancos, como decimais, datas e inteiros grandes.

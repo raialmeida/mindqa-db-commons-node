@@ -63,8 +63,14 @@ describe('Cypress database tasks', () => {
     mocks.closePools.mockResolvedValue(undefined);
     const tasks = createDatabaseTasks();
 
-    await expect(tasks['db:select'](null as never)).rejects.toBeInstanceOf(
-      TypeError,
+    await expect(tasks['db:select'](null as never)).rejects.toThrow(
+      'Os argumentos da tarefa de banco devem ser informados em um objeto.',
+    );
+    await expect(tasks['db:select']({} as never)).rejects.toThrow(
+      'O campo sql deve conter um comando SQL.',
+    );
+    await expect(tasks['db:select']({ sql: '   ' })).rejects.toThrow(
+      'O campo sql deve conter um comando SQL.',
     );
     await expect(
       tasks['db:execute']({

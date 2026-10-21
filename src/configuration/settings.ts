@@ -68,7 +68,7 @@ function driverOptions(
   for (const [key, value] of Object.entries(parsed)) {
     if (!OPTIONS[type].includes(key))
       throw new DatabaseConfigurationError(
-        `Opção de driver não permitida para ${type}. Consulte DB_DRIVER_OPTIONS no README.`,
+        `Opção de driver não permitida para ${type}. Consulte a documentação de configuração.`,
       );
     if (key === 'ssl') {
       if (typeof value === 'boolean') {
