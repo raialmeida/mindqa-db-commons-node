@@ -190,11 +190,14 @@ O objeto enviado para `db:select` ou `db:execute` aceita:
 | `database`   | Não         | Nome da base. Quando omitido, usa a base configurada para a conexão. |
 
 Quando o SQL não tiver parâmetros, `params` pode ser omitido. Use nesse campo
-apenas `string`, número finito, `boolean` ou `null`, pois os valores atravessam
-a serialização do `cy.task()`.
+apenas `string`, número finito, `boolean` ou `null`. Inteiros devem estar no
+intervalo seguro do JavaScript, pois os valores atravessam a serialização do
+`cy.task()`.
 
 Quando uma operação falha, a mensagem apresentada pelo Cypress identifica a
-tarefa, a conexão, a base e o erro original informado pelo driver.
+tarefa, a conexão, a base e o erro original informado pelo driver. A biblioteca não
+acrescenta SQL, parâmetros ou credenciais, mas a mensagem original pode conter
+detalhes fornecidos pelo driver.
 
 ## Playwright
 
@@ -202,7 +205,7 @@ Para mais exemplos de configuração, conexões nomeadas, outras bases, execuç�
 paralela e tratamento de erros, consulte a página [Playwright na Wiki](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Playwright).
 
 O Playwright executa os testes em Node.js, portanto pode usar a API principal
-diretamente, sem configuração adicional:
+diretamente, sem um adaptador específico:
 
 ```typescript
 import { expect, test } from '@playwright/test';

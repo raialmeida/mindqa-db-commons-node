@@ -38,8 +38,9 @@ da API pública.
 No adaptador Cypress, SQL e parâmetros atravessam o `cy.task()`, enquanto as
 credenciais permanecem no processo Node. Os parâmetros são limitados a valores
 serializáveis. Falhas preservam o erro original em `cause` e também expõem sua
-descrição na mensagem apresentada pelo Cypress, sem acrescentar SQL, parâmetros
-ou credenciais.
+descrição na mensagem apresentada pelo Cypress. O adaptador não acrescenta SQL,
+parâmetros ou credenciais, mas não controla os detalhes presentes na mensagem do
+driver.
 
 ## Configuração e concorrência
 
