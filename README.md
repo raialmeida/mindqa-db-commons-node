@@ -257,7 +257,6 @@ Argumentos inválidos geram `TypeError`, problemas de configuração geram
 `DatabaseConfigurationError` e falhas do driver geram `DatabaseError`. O erro
 original do driver fica disponível em `cause`.
 
-
 ## Licença
 
 Distribuído sob a [licença MIT](LICENSE).
