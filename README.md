@@ -2,49 +2,32 @@
 
 [![Node CI](https://github.com/raialmeida/mindqa-db-commons-node/actions/workflows/ci.yml/badge.svg)](https://github.com/raialmeida/mindqa-db-commons-node/actions/workflows/ci.yml)
 
-Biblioteca para executar CRUD em **SQL Server, PostgreSQL, Oracle e MySQL**
-em automações JavaScript e TypeScript, com configuração por variáveis de ambiente
-ou arquivos `.env`. Use uma conexão padrão ou selecione conexões e bases diferentes
-no mesmo teste.
+Biblioteca para executar consultas e operações em **PostgreSQL, SQL Server,
+MySQL e Oracle** em testes automatizados JavaScript e TypeScript.
 
-Inspirada na [MindQA DB Commons para Java](https://github.com/raialmeida/mindqa-db-commons),
-mantém `DatabaseService.select`, `execute`, `connection` e `database`, com `await`.
-Cada operação usa sua própria conexão em auto-commit e a fecha ao terminar.
-Pool de conexões e cache de configuração podem ser habilitados separadamente.
+A configuração pode ser carregada por variáveis de ambiente ou arquivos `.env`.
+A biblioteca oferece uma API assíncrona para Node.js e uma integração própria
+para tarefas do Cypress.
 
-Funciona no processo **Node.js** de automações de API, interface e integração,
-como Playwright Test, Selenium WebDriver, Cucumber, Jest, Vitest e Mocha.
-No Cypress, use [`cy.task`](https://docs.cypress.io/api/commands/task) para executar o acesso ao banco no processo Node.
-A biblioteca não depende desses frameworks e não deve ser importada no navegador.
-
-- [Instalação](#instalação)
-- [Início rápido](#início-rápido)
-- [Métodos da biblioteca](#métodos-da-biblioteca)
-- [Configuração por ambiente](#configuração-por-ambiente)
-- [Múltiplas conexões e bases](#múltiplas-conexões-e-bases)
-- [Pool, cache e erros](#pool-cache-e-erros)
-- [Desenvolvimento e testes](#desenvolvimento-e-testes)
+A documentação completa, com configurações, métodos, exemplos e solução de
+problemas, está disponível na [Wiki do projeto](https://github.com/raialmeida/mindqa-db-commons-node/wiki).
 
 ## Instalação
 
-Use **Node.js 22 ou superior**. O pacote atende JavaScript e TypeScript,
-com suporte a ESM (`import`), CommonJS (`require`) e declarações de tipos incluídas.
+Use Node.js 22 ou superior:
 
 ```bash
 npm install --save-dev @mindqa/db-commons
 ```
 
-Os drivers `pg`, `mssql`, `mysql2` e `oracledb` são
-dependências do pacote; o consumidor não precisa instalá-los separadamente.
-O Oracle usa o modo Thin, sem exigir instalação do Oracle Instant Client.
-O framework de testes continua sendo uma dependência do projeto consumidor.
+Os drivers dos quatro bancos são instalados com o pacote. A biblioteca oferece
+suporte a ESM, CommonJS e declarações TypeScript.
 
-## Início rápido
+## Configuração
 
-No diretório a partir do qual você executa os testes, crie `.env`:
+Crie um arquivo `.env` no diretório em que os testes são executados:
 
 ```dotenv
-DB_DEFAULT_CONNECTION=postgresql
 POSTGRESQL_HOST=localhost
 POSTGRESQL_PORT=5432
 POSTGRESQL_USER=qa_user
@@ -52,317 +35,243 @@ POSTGRESQL_PASS="sua_senha"
 POSTGRESQL_NAME=qa_database
 ```
 
-Esse arquivo é carregado automaticamente. Também é possível configurar
-`SQLSERVER_*`, `MYSQL_*` e `ORACLE_*`. Com uma única conexão configurada,
-`DB_DEFAULT_CONNECTION` pode ser omitido. Variáveis de ambiente têm prioridade
-sobre as chaves do arquivo, inclusive quando seu valor está vazio.
+O arquivo é carregado automaticamente. Variáveis de ambiente têm prioridade
+sobre os valores do `.env`.
 
-O exemplo abaixo pressupõe um cliente já cadastrado. Coloque as instruções
-dentro de uma função de teste `async`:
+Use os prefixos abaixo para configurar outro banco:
+
+| Banco      | Prefixo       | Porta padrão |
+| ---------- | ------------- | ------------ |
+| PostgreSQL | `POSTGRESQL_` | `5432`       |
+| SQL Server | `SQLSERVER_`  | `1433`       |
+| MySQL      | `MYSQL_`      | `3306`       |
+| Oracle     | `ORACLE_`     | `1521`       |
+
+Todos usam os campos `HOST`, `USER`, `PASS` e `NAME`. No Oracle,
+`NAME` representa o service name. `PORT` é opcional e usa a porta padrão do banco quando omitido.
+
+Para selecionar uma configuração por ambiente, crie arquivos como `.env.hml`
+ou `.env.qa` e informe o perfil antes de executar os testes:
+
+```bash
+DB_ENV=hml npm test
+```
+
+Também é possível selecionar um arquivo diretamente:
+
+```bash
+DB_CONFIG=config/qa.env npm test
+```
+
+Consulte na Wiki a [configuração por ambiente](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Configuração-por-ambiente),
+a [referência de todas as variáveis](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Referência-de-configuração)
+e a configuração de [múltiplas conexões e bases](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Múltiplas-conexões-e-bases).
+
+## Uso
+
+Use `select()` para consultas e `execute()` para `INSERT`, `UPDATE` e `DELETE`:
 
 ```javascript
 import { DatabaseService } from '@mindqa/db-commons';
-import assert from 'node:assert/strict';
 
-const id = 'cliente-1';
 const clientes = await DatabaseService.select(
   'SELECT nome, email FROM clientes WHERE id = ?',
-  id,
+  'cliente-1',
 );
-
-assert.equal(clientes.length, 1);
-assert.equal(clientes[0].nome, 'Cliente QA');
-assert.equal(clientes[0].email, 'cliente@example.com');
 
 const removidos = await DatabaseService.execute(
   'DELETE FROM clientes WHERE id = ?',
-  id,
+  'cliente-1',
 );
-assert.equal(removidos, 1);
 ```
 
-Em CommonJS, troque somente a importação:
+Os parâmetros substituem os placeholders `?` na ordem informada e são enviados
+separadamente ao driver. Não concatene valores diretamente no SQL.
+
+Para consultar outra base usando a conexão padrão:
+
+```javascript
+const auditoria = await DatabaseService.database('qa_auditoria').select(
+  'SELECT evento FROM auditoria WHERE cliente_id = ?',
+  'cliente-1',
+);
+```
+
+Para usar o alias de uma conexão configurada:
+
+```javascript
+const financeiro = DatabaseService.connection('financeiro');
+
+const lancamentos = await financeiro.select(
+  'SELECT descricao, valor FROM lancamentos WHERE id = ?',
+  10,
+);
+```
+
+Métodos disponíveis:
+
+| Método                      | Retorno           | Descrição                                      |
+| --------------------------- | ----------------- | ---------------------------------------------- |
+| `select(sql, ...params)`    | `Promise<T[]>`    | Retorna as linhas encontradas.                 |
+| `execute(sql, ...params)`   | `Promise<number>` | Retorna a quantidade de linhas afetadas.       |
+| `connection(nome)`          | `DatabaseClient`  | Seleciona uma conexão configurada.             |
+| `database(nome)`            | `DatabaseClient`  | Seleciona outra base na conexão atual.         |
+| `clearConfigurationCache()` | `void`            | Limpa o cache opcional de configuração.        |
+| `closePools()`              | `Promise<void>`   | Fecha todos os pools mantidos pela biblioteca. |
+
+Em CommonJS, use:
 
 ```javascript
 const { DatabaseService } = require('@mindqa/db-commons');
 ```
 
-No TypeScript, o uso é o mesmo:
+## Cypress
+
+Para configurações detalhadas, parâmetros aceitos, conexões, bases, pools e
+tratamento de erros, consulte a página [Cypress na Wiki](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Cypress).
+
+O código do teste Cypress é executado no navegador. Registre as tarefas de banco
+no processo Node por meio de `setupNodeEvents`:
+
+```javascript
+// cypress.config.js
+const { defineConfig } = require('cypress');
+const { createDatabaseTasks } = require('@mindqa/db-commons/cypress');
+
+module.exports = defineConfig({
+  e2e: {
+    setupNodeEvents(on) {
+      on('task', createDatabaseTasks());
+    },
+  },
+});
+```
+
+Use qualquer SQL diretamente no teste:
+
+```javascript
+describe('clientes', () => {
+  after(() => {
+    cy.task('db:closePools');
+  });
+
+  it('consulta e valida um cliente', () => {
+    cy.task('db:select', {
+      sql: 'SELECT nome, email FROM clientes WHERE id = ?',
+      params: ['cliente-1'],
+      connection: 'postgresql',
+      database: 'qa_database',
+    }).then((clientes) => {
+      expect(clientes).to.have.length(1);
+      expect(clientes[0]).to.deep.equal({
+        nome: 'Cliente QA',
+        email: 'cliente@example.com',
+      });
+    });
+  });
+});
+```
+
+As tarefas disponíveis são:
+
+| Tarefa          | Retorno            | Descrição                           |
+| --------------- | ------------------ | ----------------------------------- |
+| `db:select`     | Linhas da consulta | Executa uma consulta.               |
+| `db:execute`    | Número             | Retorna a quantidade afetada.       |
+| `db:closePools` | `null`             | Fecha os pools do processo Cypress. |
+
+O objeto enviado para `db:select` ou `db:execute` aceita:
+
+| Campo        | Obrigatório | Descrição                                                            |
+| ------------ | ----------- | -------------------------------------------------------------------- |
+| `sql`        | Sim         | Comando SQL com placeholders `?`.                                    |
+| `params`     | Não         | Valores dos placeholders, na mesma ordem.                            |
+| `connection` | Não         | Nome da conexão. Quando omitido, usa a conexão padrão.               |
+| `database`   | Não         | Nome da base. Quando omitido, usa a base configurada para a conexão. |
+
+Quando o SQL não tiver parâmetros, `params` pode ser omitido. Use nesse campo
+apenas `string`, número finito, `boolean` ou `null`. Inteiros devem estar no
+intervalo seguro do JavaScript, pois os valores atravessam a serialização do
+`cy.task()`.
+
+Quando uma operação falha, a mensagem apresentada pelo Cypress identifica a
+tarefa, a conexão, a base e o erro original informado pelo driver. A biblioteca não
+acrescenta SQL, parâmetros ou credenciais, mas a mensagem original pode conter
+detalhes fornecidos pelo driver.
+
+## Playwright
+
+Para mais exemplos de configuração, conexões nomeadas, outras bases, execução
+paralela e tratamento de erros, consulte a página [Playwright na Wiki](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Playwright).
+
+O Playwright executa os testes em Node.js, portanto pode usar a API principal
+diretamente, sem um adaptador específico:
 
 ```typescript
+import { expect, test } from '@playwright/test';
 import { DatabaseService } from '@mindqa/db-commons';
 
-const clientes = await DatabaseService.select(
-  'SELECT nome, email FROM clientes WHERE id = ?',
-  'cliente-1',
-);
+const postgresql = DatabaseService.connection('postgresql');
+const sqlserver = DatabaseService.connection('sqlserver');
+
+test.afterAll(async () => {
+  await DatabaseService.closePools();
+});
+
+test('consulta usando a conexão padrão', async () => {
+  const clientes = await DatabaseService.select(
+    'SELECT nome, email FROM clientes WHERE id = ?',
+    'cliente-1',
+  );
+
+  expect(clientes).toHaveLength(1);
+  expect(clientes[0]).toEqual({
+    nome: 'Cliente QA',
+    email: 'cliente@example.com',
+  });
+});
+
+test('consulta usando PostgreSQL', async () => {
+  const clientes = await postgresql.select(
+    'SELECT nome FROM clientes WHERE id = ?',
+    'cliente-1',
+  );
+
+  expect(clientes).toHaveLength(1);
+  expect(clientes[0]).toEqual({ nome: 'Cliente QA' });
+});
+
+test('consulta outra base usando SQL Server', async () => {
+  const registros = await sqlserver
+    .database('qa_auditoria')
+    .select('SELECT evento FROM auditoria WHERE cliente_id = ?', 'cliente-1');
+
+  expect(registros).not.toHaveLength(0);
+  expect(registros[0]).toEqual({ evento: 'CLIENTE_CONSULTADO' });
+});
 ```
 
-Sem informar um tipo, o resultado é `DatabaseRow[]`. Opcionalmente, você pode
-usar `select<T>()` para obter autocomplete e verificação do compilador. O tipo
-genérico não valida os dados do banco em tempo de execução.
+Os exemplos pressupõem que as conexões `postgresql` e `sqlserver` estejam
+configuradas.
 
-## Métodos da biblioteca
+## Pool e erros
 
-| Método                      | Retorno           | Uso                                                            |
-| --------------------------- | ----------------- | -------------------------------------------------------------- |
-| `select(sql, ...params)`    | `Promise<T[]>`    | Consulta; lista vazia quando não houver linhas.                |
-| `execute(sql, ...params)`   | `Promise<number>` | INSERT, UPDATE ou DELETE; quantidade afetada, não o ID gerado. |
-| `connection(nome)`          | `DatabaseClient`  | Seleciona uma conexão nomeada.                                 |
-| `database(nome)`            | `DatabaseClient`  | Seleciona outra base da conexão padrão.                        |
-| `clearConfigurationCache()` | `void`            | Invalida os snapshots de configuração.                         |
-| `closePools()`              | `Promise<void>`   | Fecha os pools ao terminar a suíte.                            |
-
-`connection()` e `database()` são síncronos: apenas criam clientes imutáveis,
-sem abrir conexões ou ler arquivos. Os clientes podem ser reutilizados e
-oferecem `select`, `execute` e `database`. Um nome de base nulo ou em branco
-retoma a base configurada.
-
-Use `?` para valores e passe os parâmetros diretamente após o SQL, na ordem:
-
-```javascript
-await DatabaseService.execute(
-  'UPDATE clientes SET nome = ? WHERE id = ?',
-  'Cliente QA',
-  'cliente-1',
-);
-```
-
-A biblioteca converte os placeholders para cada driver e envia os valores
-separadamente. Não concatene dados no SQL. Parâmetros representam valores,
-nunca nomes de tabelas, bases ou colunas. Caracteres `?` em textos, identificadores
-delimitados e comentários não são substituídos. No PostgreSQL, escreva `??`,
-`??|` e `??&` para os operadores JSON `?`, `?|` e `?&`.
-Use somente placeholders `?`; não misture parâmetros nativos como `$1` ou `:nome`.
-
-São aceitos `string`, números finitos (inteiros precisam ser seguros no JavaScript),
-`boolean`, `bigint`, `Date`, `Buffer` e `null`. `undefined`, arrays e objetos
-arbitrários são rejeitados; serialize JSON explicitamente quando necessário.
-Use `null` para SQL NULL. No Oracle, booleanos são enviados como `1`/`0` e uma
-string vazia segue a semântica NULL do banco.
-
-O SQL e os tipos retornados seguem o banco/driver. Datas, decimais, inteiros grandes
-e aliases podem ter representações diferentes; use aliases delimitados para
-preservar maiúsculas/minúsculas, e strings/casts SQL quando precisar preservar
-precisão decimal ou inteiros além de `Number.MAX_SAFE_INTEGER`.
-LOBs Oracle de texto/binários são materializados antes de fechar a conexão.
-Comentários executáveis MySQL (`/*! ... */`) não são suportados. O scanner assume
-os modos de escape padrão: PostgreSQL `standard_conforming_strings=on` e MySQL
-sem `NO_BACKSLASH_ESCAPES`.
-
-## Configuração por ambiente
-
-O arquivo é selecionado nesta ordem:
-
-| Seleção no processo       | Arquivo lido                                                      |
-| ------------------------- | ----------------------------------------------------------------- |
-| `DB_CONFIG=config/qa.env` | Caminho explícito, relativo ao diretório de execução ou absoluto. |
-| `DB_ENV=hml`              | `.env.hml` no diretório de execução.                              |
-| Sem seletor               | `.env` no diretório de execução, se existir.                      |
-
-Os arquivos **não são mesclados**. Com `DB_ENV=hml`, somente `.env.hml` é lido;
-credenciais de `.env` não são usadas como fallback. Arquivos explicitamente
-selecionados precisam existir. Sem seletor, a ausência de `.env` permite usar
-somente variáveis de ambiente, como segredos do CI.
-
-Defina `DB_CONFIG` e `DB_ENV` **antes de executar os testes**, nas variáveis do
-processo, e não dentro do próprio arquivo a selecionar. `NODE_ENV` não seleciona
-o banco. Um perfil aceita letras, números, hífen e sublinhado.
-
-Linux/macOS:
-
-```bash
-DB_ENV=hml npm test
-DB_CONFIG=config/qa.env npm test
-```
-
-PowerShell:
-
-```powershell
-$env:DB_ENV = 'hml'
-npm test
-```
-
-A leitura segue a sintaxe `.env` do Node.js, com valores entre aspas e comentários.
-Não expande `${VAR}` nem modifica `process.env`. Coloque senhas com `#` entre aspas.
-Mantenha arquivos reais de credenciais fora do Git e versione somente exemplos.
-
-Os sufixos abaixo podem usar `POSTGRESQL_`, `SQLSERVER_`, `MYSQL_`, `ORACLE_`,
-um alias nomeado ou `DB_CONNECTIONS_<NOME>_`:
-
-| Sufixo                       | Padrão / comportamento                                                                                                                                                        |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TYPE`                       | Inferido pelo prefixo; obrigatório na prática para conexões genéricas de outros bancos. Sem tipo, usa SQL Server, como no Java. Aceita `postgres` como alias de `postgresql`. |
-| `HOST`                       | Obrigatório; host ou IP, sem protocolo, porta ou parâmetros.                                                                                                                  |
-| `PORT`                       | 5432 PostgreSQL, 1433 SQL Server, 3306 MySQL, 1521 Oracle.                                                                                                                    |
-| `USER`                       | Obrigatório.                                                                                                                                                                  |
-| `PASS`                       | Obrigatório; aceita senha vazia e preserva espaços.                                                                                                                           |
-| `NAME`                       | Obrigatório; nome da base ou service name no Oracle.                                                                                                                          |
-| `LOGIN_TIMEOUT_SECONDS`      | `0`: não configura um limite adicional; preserva o comportamento padrão do driver.                                                                                            |
-| `QUERY_TIMEOUT_SECONDS`      | `0`: sem limite de consulta configurado pela biblioteca.                                                                                                                      |
-| `POOL_ENABLED`               | `false`.                                                                                                                                                                      |
-| `POOL_MAX_SIZE`              | `5`.                                                                                                                                                                          |
-| `POOL_CONNECTION_TIMEOUT_MS` | `30000`.                                                                                                                                                                      |
-| `ENCRYPT`                    | SQL Server: `true`; aceita `true`, `false` ou `strict`.                                                                                                                       |
-| `TRUST_SERVER_CERTIFICATE`   | SQL Server: `false`.                                                                                                                                                          |
-| `DRIVER_OPTIONS`             | Objeto JSON com as opções adicionais permitidas abaixo.                                                                                                                       |
-
-Também é possível usar uma única conexão na raiz com `DB_TYPE`, `DB_HOST`,
-`DB_PORT`, `DB_USER`, `DB_PASS` e `DB_NAME`. Chaves na raiz não são herdadas
-por conexões nomeadas. `DB_DEFAULT_CONNECTION` e `DB_CONFIG_CACHE_ENABLED`
-são globais, sem prefixo do banco.
-
-Os limites de tempo acompanham os drivers: PostgreSQL usa `statement_timeout`,
-SQL Server usa `requestTimeout`, MySQL usa timeout do comando e descarta a
-conexão em caso de falha, e Oracle usa `callTimeout` por round trip, não por
-consulta inteira. Uma alteração pode ter sido confirmada pelo banco antes de
-uma falha de rede/timeout; a biblioteca não repete operações automaticamente.
-
-Opções adicionais de `DRIVER_OPTIONS`:
-
-| Banco      | Chaves permitidas                                                                                      |
-| ---------- | ------------------------------------------------------------------------------------------------------ |
-| PostgreSQL | `application_name`, `ssl`, `keepAlive`                                                                 |
-| SQL Server | `appName`, `useUTC`, `enableArithAbort`                                                                |
-| MySQL      | `charset`, `timezone`, `supportBigNumbers`, `bigNumberStrings`, `decimalNumbers`, `dateStrings`, `ssl` |
-| Oracle     | `stmtCacheSize`                                                                                        |
-
-`ssl` aceita booleano ou objeto com `ca`, `cert`, `key` (conteúdo PEM) e
-`rejectUnauthorized` (booleano). As demais opções mantêm os tipos do driver.
-Destino, credenciais e limites não podem ser substituídos por opções genéricas.
-
-```dotenv
-POSTGRESQL_DRIVER_OPTIONS='{"application_name":"qa-tests","ssl":{"rejectUnauthorized":true}}'
-```
-
-As propriedades JDBC `DB_DRIVER_PROPERTIES` não são transferíveis para drivers
-Node.js; use `DRIVER_OPTIONS`. Para SQL Server local com certificado autoassinado,
-configure `SQLSERVER_TRUST_SERVER_CERTIFICATE=true` somente no ambiente correspondente.
-
-## Múltiplas conexões e bases
-
-Use aliases para dois destinos do mesmo banco:
-
-```dotenv
-DB_DEFAULT_CONNECTION=principal
-
-POSTGRESQL_PRINCIPAL_HOST=localhost
-POSTGRESQL_PRINCIPAL_PORT=5432
-POSTGRESQL_PRINCIPAL_USER=qa_user
-POSTGRESQL_PRINCIPAL_PASS="sua_senha"
-POSTGRESQL_PRINCIPAL_NAME=qa_clientes
-
-POSTGRESQL_FINANCEIRO_HOST=localhost
-POSTGRESQL_FINANCEIRO_PORT=5433
-POSTGRESQL_FINANCEIRO_USER=financeiro_user
-POSTGRESQL_FINANCEIRO_PASS="outra_senha"
-POSTGRESQL_FINANCEIRO_NAME=qa_financeiro
-```
-
-```javascript
-const auditoria = await DatabaseService.database('qa_auditoria').select(
-  'SELECT nome FROM clientes WHERE id = ?',
-  'cliente-1',
-);
-
-const financeiro = DatabaseService.connection('financeiro');
-const removidos = await financeiro
-  .database('qa_clientes')
-  .execute('DELETE FROM clientes WHERE id = ?', 'cliente-1');
-```
-
-As bases precisam existir e o usuário precisa ter acesso. `database()` preserva
-host, porta, credenciais e opções; no Oracle, troca o service name, não o schema.
-
-A forma genérica também é aceita: `DB_CONNECTIONS_FINANCEIRO_TYPE=postgresql`,
-`DB_CONNECTIONS_FINANCEIRO_HOST=...` etc. Dentro de uma mesma fonte, essa forma
-tem prioridade sobre aliases; entre fontes, o ambiente tem prioridade sobre
-o arquivo. Não configure o mesmo nome com prefixos de bancos diferentes.
-
-Nomes usam letras ASCII e números, começando por letra. A seleção ignora
-maiúsculas e espaços nas extremidades. Um nome desconhecido gera erro; várias
-conexões sem uma conexão padrão geram erro de ambiguidade. Apenas o destino selecionado
-é validado.
-
-## Pool, cache e erros
-
-Sem pool, cada operação abre e fecha seus recursos. No SQL Server, o driver
-usa internamente um pool de uma conexão, também fechado após a operação.
-Para reutilizar conexões físicas, habilite por destino:
+O pool é desabilitado por padrão. Para habilitá-lo:
 
 ```dotenv
 POSTGRESQL_POOL_ENABLED=true
 POSTGRESQL_POOL_MAX_SIZE=5
-POSTGRESQL_POOL_CONNECTION_TIMEOUT_MS=30000
-DB_CONFIG_CACHE_ENABLED=true
 ```
 
-Cada operação continua isolada em sua conexão enquanto estiver executando.
-Não há transação compartilhada entre chamadas. Alterações de sessão via SQL não
-são restauradas automaticamente; mantenha esse tipo de operação fora de pools
-reutilizados. O cache de configuração é independente do pool.
+Feche os pools no encerramento da suíte:
 
 ```javascript
-// Após alterar o arquivo com cache habilitado:
-DatabaseService.clearConfigurationCache();
-
-// No encerramento da suíte, depois de aguardar as consultas:
 await DatabaseService.closePools();
 ```
 
-O registro mantém até 32 pools por processo, separados por destino, credenciais
-e opções. Destinos adicionais usam conexões diretas. O cache mantém até 32 snapshots.
-Workers distintos têm registros próprios. O carregamento via ESM e CommonJS no
-mesmo processo compartilha os registros. A biblioteca não instala handlers de
-sinais nem encerra o processo; o consumidor deve aguardar `closePools()` no teardown.
-
-Argumentos inválidos geram `TypeError`; problemas de configuração geram
-`DatabaseConfigurationError`; falhas de driver geram `DatabaseError` com o erro
-original em `cause`. A mensagem externa não acrescenta SQL, parâmetros ou
-credenciais. A causa pode conter informações do driver; evite publicá-la em logs
-sem revisão. Falhas simultâneas de operação e fechamento são preservadas em um
-`AggregateError` na causa.
-
-## Desenvolvimento e testes
-
-```bash
-npm ci
-npm run check
-```
-
-O comando verifica tipos, lint, formatação, testes unitários, build e consumo do
-tarball em JavaScript e TypeScript, ESM e CommonJS. Os testes unitários não exigem
-um servidor de banco. O teste de empacotamento instala o tarball em um projeto
-temporário, aproveita o cache do npm e pode consultar o registro para resolver dependências.
-
-Para testes de integração com os quatro bancos isolados em Docker:
-
-```bash
-docker compose -f compose.integration.yml up -d --wait postgresql mysql sqlserver oracle
-docker compose -f compose.integration.yml run --rm sqlserver-init
-DB_CONFIG=.env.integration.example npm run test:integration
-docker compose -f compose.integration.yml down --volumes
-```
-
-Os testes criam e removem somente tabelas com nomes aleatórios `mindqa_*`.
-O arquivo de exemplo usa credenciais descartáveis e portas locais exclusivas.
-Para um banco de cada vez, adicione `IT_DATABASE=postgresql` (ou `sqlserver`,
-`mysql`, `oracle`). A CI executa testes unitários em Node.js 22/24 e integração
-com os quatro bancos.
-
-Para gerar o pacote localmente, sem publicar:
-
-```bash
-npm pack
-```
-
-O tarball inclui somente `dist`, README, licença e metadados do pacote.
-A documentação de arquitetura está em [docs/architecture.md](docs/architecture.md).
-
-## Como contribuir
-
-Consulte [CONTRIBUTING.md](CONTRIBUTING.md). Alterações de comportamento devem
-incluir testes. Questões de segurança seguem [SECURITY.md](SECURITY.md).
+Argumentos inválidos geram `TypeError`, problemas de configuração geram
+`DatabaseConfigurationError` e falhas do driver geram `DatabaseError`. O erro
+original do driver fica disponível em `cause`.
 
 ## Licença
 

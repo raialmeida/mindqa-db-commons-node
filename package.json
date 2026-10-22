@@ -1,6 +1,6 @@
 {
   "name": "@mindqa/db-commons",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Operações em SQL Server, PostgreSQL, Oracle e MySQL para testes automatizados JavaScript e TypeScript.",
   "license": "MIT",
   "author": "Raí Almeida",
@@ -48,12 +48,14 @@
   "bugs": {
     "url": "https://github.com/raialmeida/mindqa-db-commons-node/issues"
   },
-  "homepage": "https://github.com/raialmeida/mindqa-db-commons-node#readme",
+  "homepage": "https://github.com/raialmeida/mindqa-db-commons-node/wiki",
   "keywords": [
     "database",
     "testing",
     "typescript",
     "javascript",
+    "cypress",
+    "playwright",
     "sqlserver",
     "postgresql",
     "mysql",
