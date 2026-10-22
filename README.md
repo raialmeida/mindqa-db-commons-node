@@ -9,6 +9,9 @@ A configuração pode ser carregada por variáveis de ambiente ou arquivos `.env
 A biblioteca oferece uma API assíncrona para Node.js e uma integração própria
 para tarefas do Cypress.
 
+A documentação completa, com configurações, métodos, exemplos e solução de
+problemas, está disponível na [Wiki do projeto](https://github.com/raialmeida/mindqa-db-commons-node/wiki).
+
 ## Instalação
 
 Use Node.js 22 ou superior:
@@ -59,6 +62,10 @@ Também é possível selecionar um arquivo diretamente:
 ```bash
 DB_CONFIG=config/qa.env npm test
 ```
+
+Consulte na Wiki a [configuração por ambiente](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Configuração-por-ambiente),
+a [referência de todas as variáveis](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Referência-de-configuração)
+e a configuração de [múltiplas conexões e bases](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Múltiplas-conexões-e-bases).
 
 ## Uso
 
@@ -119,6 +126,9 @@ const { DatabaseService } = require('@mindqa/db-commons');
 ```
 
 ## Cypress
+
+Para configurações detalhadas, parâmetros aceitos, conexões, bases, pools e
+tratamento de erros, consulte a página [Cypress na Wiki](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Cypress).
 
 O código do teste Cypress é executado no navegador. Registre as tarefas de banco
 no processo Node por meio de `setupNodeEvents`:
@@ -187,6 +197,9 @@ Quando uma operação falha, a mensagem apresentada pelo Cypress identifica a
 tarefa, a conexão, a base e o erro original informado pelo driver.
 
 ## Playwright
+
+Para mais exemplos de configuração, conexões nomeadas, outras bases, execução
+paralela e tratamento de erros, consulte a página [Playwright na Wiki](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Playwright).
 
 O Playwright executa os testes em Node.js, portanto pode usar a API principal
 diretamente, sem configuração adicional:
