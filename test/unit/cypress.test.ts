@@ -133,7 +133,7 @@ describe('Cypress database tasks', () => {
     });
   });
 
-  it('uses serializable defaults and protects against circular causes', async () => {
+  it('omits implicit connection and database labels and protects against circular causes', async () => {
     const circular = new Error('pool indisponível');
     Object.defineProperty(circular, 'cause', { value: circular });
     mocks.execute.mockRejectedValue(circular);
@@ -143,7 +143,83 @@ describe('Cypress database tasks', () => {
     ).rejects.toMatchObject({
       name: 'Error',
       message:
-        'Falha na tarefa db:execute (conexão: padrão, base: configurada): Error: pool indisponível <- [causa circular]',
+        'Falha na tarefa db:execute: Error: pool indisponível <- [causa circular]',
+    });
+  });
+
+  it('includes only the database when it is explicitly selected', async () => {
+    mocks.select.mockRejectedValue(new Error('consulta indisponível'));
+
+    await expect(
+      createDatabaseTasks()['db:select']({
+        sql: 'SELECT 1',
+        database: 'qa_auditoria',
+      }),
+    ).rejects.toMatchObject({
+      message:
+        'Falha na tarefa db:select (base: qa_auditoria): Error: consulta indisponível',
+    });
+  });
+
+  it('does not invent a database label when the connection is not configured', async () => {
+    const configurationError = new Error(
+      "Conexão 'inexistente' não configurada.",
+    );
+    configurationError.name = 'DatabaseConfigurationError';
+    mocks.select.mockRejectedValue(configurationError);
+
+    await expect(
+      createDatabaseTasks()['db:select']({
+        sql: 'SELECT 1',
+        connection: 'inexistente',
+      }),
+    ).rejects.toMatchObject({
+      message:
+        "Falha na tarefa db:select (conexão: inexistente): DatabaseConfigurationError: Conexão 'inexistente' não configurada.",
+    });
+  });
+
+  it('suggests the certificate setting for a named SQL Server connection', async () => {
+    const connectionError = Object.assign(
+      new Error(
+        'Failed to connect to db.internal:1433 - self-signed certificate',
+      ),
+      { code: 'ESOCKET' },
+    );
+    connectionError.name = 'ConnectionError';
+    mocks.select.mockRejectedValue(connectionError);
+
+    await expect(
+      createDatabaseTasks()['db:select']({
+        sql: 'SELECT 1',
+        connection: 'sqlserverted',
+      }),
+    ).rejects.toMatchObject({
+      message:
+        'Falha na tarefa db:select (conexão: sqlserverted): ConnectionError [ESOCKET]: Failed to connect to db.internal:1433 - self-signed certificate Para aceitar o certificado em um ambiente controlado, defina SQLSERVER_SQLSERVERTED_TRUST_SERVER_CERTIFICATE=true (ou DB_CONNECTIONS_SQLSERVERTED_TRUST_SERVER_CERTIFICATE=true, conforme o prefixo da conexão).',
+    });
+  });
+
+  it('suggests the root certificate setting for the default connection', async () => {
+    const connectionError = new Error('unable to verify the first certificate');
+    connectionError.name = 'ConnectionError';
+    mocks.select.mockRejectedValue(connectionError);
+
+    await expect(
+      createDatabaseTasks()['db:select']({ sql: 'SELECT 1' }),
+    ).rejects.toMatchObject({
+      message:
+        'Falha na tarefa db:select: ConnectionError: unable to verify the first certificate Para aceitar o certificado em um ambiente controlado, defina SQLSERVER_TRUST_SERVER_CERTIFICATE=true (ou DB_TRUST_SERVER_CERTIFICATE=true, conforme o prefixo da conexão).',
+    });
+  });
+
+  it('does not suggest a SQL Server setting for another driver', async () => {
+    mocks.select.mockRejectedValue(new Error('self-signed certificate'));
+
+    await expect(
+      createDatabaseTasks()['db:select']({ sql: 'SELECT 1' }),
+    ).rejects.toMatchObject({
+      message: 'Falha na tarefa db:select: Error: self-signed certificate',
     });
   });
 

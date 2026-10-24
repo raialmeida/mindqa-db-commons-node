@@ -36,7 +36,7 @@ POSTGRESQL_NAME=qa_database
 ```
 
 O arquivo é carregado automaticamente. Variáveis de ambiente têm prioridade
-sobre os valores do `.env`.
+sobre os valores do `.env`. Consulte [Referência de configuração](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Refer%C3%AAncia-de-configura%C3%A7%C3%A3o) para configurar outros campos da conexão.
 
 Use os prefixos abaixo para configurar outro banco:
 
@@ -63,8 +63,7 @@ Também é possível selecionar um arquivo diretamente:
 DB_CONFIG=config/qa.env npm test
 ```
 
-Consulte na Wiki a [configuração por ambiente](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Configuração-por-ambiente),
-a [referência de todas as variáveis](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Referência-de-configuração)
+Consulte na Wiki a [configuração por ambiente](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Configuração-por-ambiente)
 e a configuração de [múltiplas conexões e bases](https://github.com/raialmeida/mindqa-db-commons-node/wiki/Múltiplas-conexões-e-bases).
 
 ## Uso
@@ -195,9 +194,9 @@ intervalo seguro do JavaScript, pois os valores atravessam a serialização do
 `cy.task()`.
 
 Quando uma operação falha, a mensagem apresentada pelo Cypress identifica a
-tarefa, a conexão, a base e o erro original informado pelo driver. A biblioteca não
-acrescenta SQL, parâmetros ou credenciais, mas a mensagem original pode conter
-detalhes fornecidos pelo driver.
+tarefa, a conexão e a base quando informadas, além do erro original retornado
+pelo driver. A biblioteca não acrescenta SQL, parâmetros ou credenciais, mas a
+mensagem original pode conter detalhes fornecidos pelo driver.
 
 ## Playwright
 
