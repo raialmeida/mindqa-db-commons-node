@@ -1,4 +1,4 @@
-# MindQA DB Commons for Node.js
+# @mindqa/db-commons
 
 [![Node CI](https://github.com/raialmeida/mindqa-db-commons-node/actions/workflows/ci.yml/badge.svg)](https://github.com/raialmeida/mindqa-db-commons-node/actions/workflows/ci.yml)
 
