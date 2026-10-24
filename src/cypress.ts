@@ -53,6 +53,14 @@ export interface CypressDatabaseTaskInput {
   readonly database?: string | null;
 }
 
+/** Opções nativas aceitas pelo `cy.task()` ao executar uma tarefa de banco. */
+export interface CypressDatabaseTaskOptions {
+  /** Define se o comando será exibido no Command Log do Cypress. */
+  readonly log?: boolean;
+  /** Tempo máximo da tarefa em milissegundos. */
+  readonly timeout?: number;
+}
+
 /** Tarefas de banco registradas no `setupNodeEvents` do Cypress. */
 export type CypressDatabaseTasks = {
   /**
@@ -65,7 +73,8 @@ export type CypressDatabaseTasks = {
    * @throws {TypeError} A Promise rejeita quando o objeto da tarefa, `sql` ou
    * `params` forem inválidos.
    * @throws {Error} A Promise rejeita com uma mensagem serializável que identifica
-   * a tarefa, a conexão, a base e a cadeia de causas do erro original.
+   * a tarefa, a conexão e a base quando informadas, além da cadeia de causas do
+   * erro original.
    */
   'db:select': (input: CypressDatabaseTaskInput) => Promise<DatabaseRow[]>;
   /**
@@ -76,7 +85,8 @@ export type CypressDatabaseTasks = {
    * @throws {TypeError} A Promise rejeita quando o objeto da tarefa, `sql` ou
    * `params` forem inválidos.
    * @throws {Error} A Promise rejeita com uma mensagem serializável que identifica
-   * a tarefa, a conexão, a base e a cadeia de causas do erro original.
+   * a tarefa, a conexão e a base quando informadas, além da cadeia de causas do
+   * erro original.
    */
   'db:execute': (input: CypressDatabaseTaskInput) => Promise<number>;
   /**
@@ -90,6 +100,37 @@ export type CypressDatabaseTasks = {
    */
   'db:closePools': () => Promise<null>;
 };
+
+declare global {
+  // O namespace é definido pelo próprio Cypress e precisa ser ampliado aqui.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Cypress {
+    // O parâmetro precisa coincidir com a declaração nativa do Cypress.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+    interface Chainable<Subject = any> {
+      /** Executa uma consulta usando a conexão e a base selecionadas. */
+      task<TResult = DatabaseRow[]>(
+        event: 'db:select',
+        input: CypressDatabaseTaskInput,
+        options?: CypressDatabaseTaskOptions,
+      ): Chainable<TResult>;
+
+      /** Executa INSERT, UPDATE ou DELETE e retorna as linhas afetadas. */
+      task<TResult = number>(
+        event: 'db:execute',
+        input: CypressDatabaseTaskInput,
+        options?: CypressDatabaseTaskOptions,
+      ): Chainable<TResult>;
+
+      /** Fecha todos os pools mantidos no processo Node do Cypress. */
+      task(
+        event: 'db:closePools',
+        input?: null,
+        options?: CypressDatabaseTaskOptions,
+      ): Chainable<null>;
+    }
+  }
+}
 
 function normalizeInput(input: CypressDatabaseTaskInput): {
   sql: string;
@@ -139,6 +180,43 @@ function clientFor(
 }
 
 const MAX_SERIALIZED_ERRORS = 10;
+
+const SQL_SERVER_CERTIFICATE_ERROR =
+  /self[- ]signed certificate|unable to verify (?:the )?first certificate|unable to get local issuer certificate|certificate (?:name|subject).*does not match|hostname\/ip does not match certificate/i;
+
+function sqlServerCertificateHint(error: unknown, connection?: string): string {
+  const visited = new Set<unknown>();
+  let isSqlServerConnectionError = false;
+  let hasCertificateError = false;
+
+  const inspect = (current: unknown): void => {
+    if (visited.has(current)) return;
+    visited.add(current);
+
+    if (!(current instanceof Error)) {
+      hasCertificateError ||= SQL_SERVER_CERTIFICATE_ERROR.test(
+        String(current),
+      );
+      return;
+    }
+    isSqlServerConnectionError ||= current.name === 'ConnectionError';
+    hasCertificateError ||= SQL_SERVER_CERTIFICATE_ERROR.test(current.message);
+    if (current instanceof AggregateError) current.errors.forEach(inspect);
+    if (current.cause !== undefined) inspect(current.cause);
+  };
+
+  inspect(error);
+  if (!isSqlServerConnectionError || !hasCertificateError) return '';
+
+  const connectionSuffix =
+    typeof connection === 'string' && connection.trim()
+      ? `_${connection.trim().toUpperCase()}`
+      : '';
+  const genericPrefix = connectionSuffix
+    ? `DB_CONNECTIONS${connectionSuffix}`
+    : 'DB';
+  return ` Para aceitar o certificado em um ambiente controlado, defina SQLSERVER${connectionSuffix}_TRUST_SERVER_CERTIFICATE=true (ou ${genericPrefix}_TRUST_SERVER_CERTIFICATE=true, conforme o prefixo da conexão).`;
+}
 
 function errorDescription(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
@@ -191,21 +269,20 @@ function taskError(
   connection?: string,
   database?: string | null,
 ): Error {
-  const selectedConnection =
+  const context = [
     typeof connection === 'string' && connection.trim()
-      ? connection.trim()
-      : 'padrão';
-  const selectedDatabase =
+      ? `conexão: ${connection.trim()}`
+      : undefined,
     typeof database === 'string' && database.trim()
-      ? database.trim()
-      : 'configurada';
-  const target =
-    task === 'db:closePools'
-      ? ''
-      : ` (conexão: ${selectedConnection}, base: ${selectedDatabase})`;
-  return new Error(`Falha na tarefa ${task}${target}: ${errorChain(error)}`, {
-    cause: error,
-  });
+      ? `base: ${database.trim()}`
+      : undefined,
+  ].filter((value): value is string => value !== undefined);
+  const target = context.length ? ` (${context.join(', ')})` : '';
+  const hint = sqlServerCertificateHint(error, connection);
+  return new Error(
+    `Falha na tarefa ${task}${target}: ${errorChain(error)}${hint}`,
+    { cause: error },
+  );
 }
 
 /**

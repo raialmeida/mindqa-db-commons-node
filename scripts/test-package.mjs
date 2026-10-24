@@ -81,6 +81,15 @@ await DatabaseService.closePools();`;
   run(process.execPath, ['smoke.cjs'], consumer);
   const ts = `import { DatabaseService } from '@mindqa/db-commons';
 import { createDatabaseTasks, type CypressDatabaseParameter } from '@mindqa/db-commons/cypress';
+declare global {
+  namespace Cypress {
+    interface Loggable { log: boolean }
+    interface Timeoutable { timeout: number }
+    interface Chainable<Subject = any> {
+      task<S = unknown>(event: string, arg?: any, options?: Partial<Loggable & Timeoutable>): Chainable<S>;
+    }
+  }
+}
 interface Cliente { id: number; nome: string }
 const rows: Promise<Cliente[]> = DatabaseService.select<Cliente>('SELECT * FROM clientes WHERE id = ?', 1);
 void rows;
@@ -92,6 +101,28 @@ declare function registerCypressTasks(event: 'task', tasks: CypressTasks): void;
 const databaseTasks = createDatabaseTasks();
 registerCypressTasks('task', databaseTasks);
 databaseTasks['db:select']({ sql: 'SELECT ?', params: [1], connection: 'qa', database: 'test' });
+declare const cy: Cypress.Chainable;
+const selectedRows: Cypress.Chainable<import('@mindqa/db-commons').DatabaseRow[]> = cy.task('db:select', {
+  sql: 'SELECT ?',
+  params: [1],
+  connection: 'qa',
+  database: 'test',
+}, {
+  log: false,
+  timeout: 30_000,
+});
+const affectedRows: Cypress.Chainable<number> = cy.task('db:execute', {
+  sql: 'DELETE FROM clientes WHERE id = ?',
+  params: [1],
+});
+const typedSelectedRows: Cypress.Chainable<Cliente[]> = cy.task<Cliente[]>('db:select', {
+  sql: 'SELECT id, nome FROM clientes',
+});
+const closedPools: Cypress.Chainable<null> = cy.task('db:closePools');
+void selectedRows;
+void affectedRows;
+void typedSelectedRows;
+void closedPools;
 // @ts-expect-error Date deve ser serializada antes de atravessar cy.task
 databaseTasks['db:select']({ sql: 'SELECT ?', params: [new Date()] });
 // @ts-expect-error bigint deve ser serializado antes de atravessar cy.task
